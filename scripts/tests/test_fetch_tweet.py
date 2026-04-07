@@ -1,0 +1,63 @@
+"""Tests for fetch-tweet.py pure functions."""
+import json
+import sys
+import tempfile
+from pathlib import Path
+
+# Add lib to path so we can import
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# We test the pure functions by importing them directly after a minimal shim
+import importlib.util, types
+
+# Load fetch-tweet as module (it uses __name__ guard so main() won't run)
+spec = importlib.util.spec_from_file_location(
+    "fetch_tweet",
+    Path(__file__).parent.parent / "fetch-tweet.py",
+)
+ft = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(ft)
+
+
+def test_extract_url_finds_x_status():
+    url = ft.extract_url_from_input("check this https://x.com/Ole_S_Hansen/status/12345 please")
+    assert url == "https://x.com/Ole_S_Hansen/status/12345"
+
+
+def test_extract_url_returns_none_when_absent():
+    assert ft.extract_url_from_input("no url here") is None
+
+
+def test_extract_tweet_id():
+    assert ft.extract_tweet_id("https://x.com/user/status/99887766") == "99887766"
+
+
+def test_format_output_basic():
+    data = {"url": "https://x.com/foo/status/1", "author": "foo", "text": "hello", "images": [], "quoted_tweet": None, "reply_to": None}
+    out = ft.format_output(data, [])
+    assert "[Tweet fetched:" in out
+    assert "@foo" in out
+    assert "hello" in out
+
+
+def test_format_output_with_image():
+    data = {"url": "https://x.com/foo/status/1", "author": "foo", "text": "chart", "images": [{"url": "http://img"}], "quoted_tweet": None, "reply_to": None}
+    out = ft.format_output(data, ["/tmp/img-0.jpg"])
+    assert "img-0.jpg" in out
+
+
+def test_format_output_with_quoted_tweet():
+    qt = {"author": "bar", "text": "original", "images": []}
+    data = {"url": "https://x.com/foo/status/1", "author": "foo", "text": "re:", "images": [], "quoted_tweet": qt, "reply_to": None}
+    out = ft.format_output(data, [])
+    assert "Quoted: @bar" in out
+
+
+def test_cache_roundtrip():
+    with tempfile.TemporaryDirectory() as tmp:
+        cache_dir = Path(tmp)
+        tweet_data = {"id": "123", "text": "test"}
+        ft._CACHE_DIR = Path(tmp)
+        ft.save_cache("123", tweet_data)
+        loaded = ft.load_cache("123")
+        assert loaded == tweet_data
