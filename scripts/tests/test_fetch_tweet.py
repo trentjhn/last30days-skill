@@ -20,12 +20,18 @@ spec.loader.exec_module(ft)
 
 
 def test_extract_url_finds_x_status():
-    url = ft.extract_url_from_input("check this https://x.com/Ole_S_Hansen/status/12345 please")
-    assert url == "https://x.com/Ole_S_Hansen/status/12345"
+    urls = ft.extract_urls_from_input("check this https://x.com/Ole_S_Hansen/status/12345 please")
+    assert urls == ["https://x.com/Ole_S_Hansen/status/12345"]
 
 
-def test_extract_url_returns_none_when_absent():
-    assert ft.extract_url_from_input("no url here") is None
+def test_extract_url_returns_empty_when_absent():
+    assert ft.extract_urls_from_input("no url here") == []
+
+
+def test_extract_url_finds_multiple():
+    text = "look at https://x.com/foo/status/111 and https://x.com/bar/status/222"
+    urls = ft.extract_urls_from_input(text)
+    assert urls == ["https://x.com/foo/status/111", "https://x.com/bar/status/222"]
 
 
 def test_extract_tweet_id():

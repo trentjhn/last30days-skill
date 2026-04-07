@@ -63,10 +63,9 @@ def _subprocess_env(creds):
 
 
 # --- URL helpers ---
-def extract_url_from_input(text):
-    """Extract first x.com status URL from text (preserves original case/format)."""
-    match = re.search(r'https?://(?:www\.)?x\.com/[^/\s]+/status/(\d+)', text)
-    return match.group(0) if match else None
+def extract_urls_from_input(text):
+    """Extract all x.com status URLs from text."""
+    return re.findall(r'https?://(?:www\.)?x\.com/[^/\s]+/status/\d+', text)
 
 
 def extract_tweet_id(url):
@@ -176,10 +175,26 @@ def format_output(tweet_data, local_image_paths):
 
 
 # --- Main ---
+def _resolve_tweet(url, creds):
+    """Fetch and cache a single tweet. Returns (tweet_data, local_image_paths) or (None, [])."""
+    tweet_id = extract_tweet_id(url)
+    if not tweet_id:
+        return None, []
+    cache_dir = get_cache_dir(tweet_id)
+    tweet_data = load_cache(tweet_id)
+    if not tweet_data:
+        tweet_data, error = fetch_tweet(url, creds)
+        if error or not tweet_data:
+            sys.stdout.write(f'[Tweet fetch failed for {url}: {error or "unknown error"}]\n')
+            return None, []
+        save_cache(tweet_id, tweet_data)
+    return tweet_data, download_images(tweet_data, cache_dir)
+
+
 def main():
     # Determine URL source: direct arg or stdin JSON
     if len(sys.argv) > 1 and sys.argv[1].startswith('http'):
-        url = sys.argv[1]
+        urls = [sys.argv[1]]
     else:
         raw = sys.stdin.read()
         try:
@@ -192,37 +207,23 @@ def main():
             )
         except Exception:
             prompt_text = raw
-        url = extract_url_from_input(prompt_text)
+        urls = extract_urls_from_input(prompt_text)
 
-    if not url:
-        sys.exit(0)  # No URL — silent exit, don't disrupt conversation
-
-    tweet_id = extract_tweet_id(url)
-    if not tweet_id:
-        sys.exit(0)
+    if not urls:
+        sys.exit(0)  # No URLs — silent exit
 
     creds = _load_credentials()
     if not creds.get('AUTH_TOKEN') or not creds.get('CT0'):
         sys.exit(0)  # No credentials — silent exit
 
-    cache_dir = get_cache_dir(tweet_id)
+    blocks = []
+    for url in urls:
+        tweet_data, local_image_paths = _resolve_tweet(url, creds)
+        if tweet_data:
+            blocks.append(format_output(tweet_data, local_image_paths))
 
-    # Use cache if available
-    cached = load_cache(tweet_id)
-    if cached:
-        tweet_data = cached
-    else:
-        tweet_data, error = fetch_tweet(url, creds)
-        if error or not tweet_data:
-            sys.stdout.write(f'[Tweet fetch failed: {error or "unknown error"}]\n')
-            sys.exit(0)
-        save_cache(tweet_id, tweet_data)
-
-    # Download images (skips already-cached files)
-    local_image_paths = download_images(tweet_data, cache_dir)
-
-    # Output the hook-injectable block
-    sys.stdout.write(format_output(tweet_data, local_image_paths) + '\n')
+    if blocks:
+        sys.stdout.write('\n---\n'.join(blocks) + '\n')
     sys.exit(0)
 
 
