@@ -16,12 +16,14 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import urllib.request
 from pathlib import Path
 
 # --- Paths ---
 _BIRD_FETCH_MJS = Path(__file__).parent / "lib" / "vendor" / "bird-search" / "bird-fetch.mjs"
 _CACHE_DIR = Path.home() / ".claude" / "tweet-cache"
+_CACHE_TTL_HOURS = 24
 
 
 # --- Credentials ---
@@ -80,13 +82,18 @@ def get_cache_dir(tweet_id):
 
 
 def load_cache(tweet_id):
-    cache_file = _CACHE_DIR / tweet_id / 'tweet.json'
-    if cache_file.exists():
-        try:
-            return json.loads(cache_file.read_text(encoding='utf-8'))
-        except Exception:
-            pass
-    return None
+    cache_dir = _CACHE_DIR / tweet_id
+    cache_file = cache_dir / 'tweet.json'
+    if not cache_file.exists():
+        return None
+    age_hours = (time.time() - cache_file.stat().st_mtime) / 3600
+    if age_hours > _CACHE_TTL_HOURS:
+        shutil.rmtree(cache_dir, ignore_errors=True)
+        return None
+    try:
+        return json.loads(cache_file.read_text(encoding='utf-8'))
+    except Exception:
+        return None
 
 
 def save_cache(tweet_id, data):

@@ -55,9 +55,24 @@ def test_format_output_with_quoted_tweet():
 
 def test_cache_roundtrip():
     with tempfile.TemporaryDirectory() as tmp:
-        cache_dir = Path(tmp)
-        tweet_data = {"id": "123", "text": "test"}
         ft._CACHE_DIR = Path(tmp)
+        tweet_data = {"id": "123", "text": "test"}
         ft.save_cache("123", tweet_data)
         loaded = ft.load_cache("123")
         assert loaded == tweet_data
+
+
+def test_cache_ttl_eviction():
+    with tempfile.TemporaryDirectory() as tmp:
+        ft._CACHE_DIR = Path(tmp)
+        tweet_data = {"id": "456", "text": "stale"}
+        ft.save_cache("456", tweet_data)
+        # Backdate the file mtime by 25 hours
+        cache_file = Path(tmp) / "456" / "tweet.json"
+        old_mtime = cache_file.stat().st_mtime - (25 * 3600)
+        import os
+        os.utime(cache_file, (old_mtime, old_mtime))
+        # Should return None and delete the directory
+        result = ft.load_cache("456")
+        assert result is None
+        assert not (Path(tmp) / "456").exists()
